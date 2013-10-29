@@ -4,12 +4,19 @@ This is a small fork of LuaPSQL to add some small additional features.
 Most notably support for array datatypes. These are currently not supported
 in any of the other Postgresql drivers for lua.
 
-I've successfuly implemented support for the following additional datatypes:
+I've added *read* support for the following additional datatypes:
 * Integer[]
 * Character Varying[]
 * Character[]
+* Timestamp[] (with or without timezone) converted to int (timezones are converted into the local machine's timezone) 
+* Timestamp/tz
+* BigInt
 
 The data for these fields is being returned as a Lua table.
+
+- Please note that writing this data is currently not supported. (i.e. insert/update)
+
+- Also, currently only one-dimenstional types (i.e. type[], and not type[][]) are supported
 
 Adding support for more array types should not be too difficult and I may
 add additional types in the future.
@@ -20,6 +27,18 @@ that greatly simplifies the handling of Postgres array columns.
 
 The library can be found here:
 http://libpqtypes.esilo.com/
+
+The code could need a bit of a refactoring since there're
+currently many code duplications.
+
+Additional Documentation on array types can be found here:
+(this is especially useful if you're interested in adding support
+for writing / updating such values)
+- http://libpqtypes.esilo.com/man3/pqt-specs.html
+- http://libpqtypes.esilo.com/man3/PQgetf.html
+- http://libpqtypes.esilo.com/man3/PQputf.html
+- http://pgl.yoyo.org/luai/i/lua_pushnumber
+
 
 LuaPSQL
 =======
@@ -43,6 +62,7 @@ command.
 
 Here's a simple example:
 
+``` lua
     local psql = require "psql"
 
     -- check result set
@@ -76,6 +96,7 @@ Here's a simple example:
     -- wrap up
     checkset(conn, conn:exec"DROP TABLE x")
     conn:finish()
+```
 
 More usage examples can be found in the "test" and "etc" folders.
 
@@ -85,7 +106,9 @@ Registered types
 
 It is possible to register specific types in LuaPSQL using:
 
+``` lua
     metatable = psql.register(oid [, metatable])
+```
 
 If `metatable` is not provided a new table will be created. psql.register sets
 field `__oid` to the provided `oid` parameter (to get the oid of a certain
@@ -95,8 +118,10 @@ The metatable for your registered type should contain two fields, `__send` and
 `__recv` that specify how values are translated from Lua to PostgreSQL and
 vice-versa, respectively:
 
+``` lua
     bytea_str = objmt.__send(obj)
     obj = objmt.__recv(bytea_str, fmod)
+```
 
 For examples, check `pqtype.c`.
 
@@ -111,5 +136,4 @@ in it.
 
 You may need to install libpqtypes by hand. It can be found here:
 http://libpqtypes.esilo.com/
-
 

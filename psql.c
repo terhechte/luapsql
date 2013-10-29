@@ -75,6 +75,7 @@ static int lpq_typeerror (lua_State *L, int narg, const char *tname) {
 #define BOOLOID    16
 #define BYTEAOID   17
 #define CHAROID    18
+#define INT8OID    20
 #define INT4OID    23
 #define TEXTOID    25 /* ignore encoding for now */
 #define OIDOID     26
@@ -82,8 +83,14 @@ static int lpq_typeerror (lua_State *L, int narg, const char *tname) {
 #define FLOAT8OID  701
 #define BPCHAROID  1042
 #define VARCHAROID 1043
+#define TIMESTAMPOID 1114
+#define TIMESTAMPTZOID 1184
+// array oid types
 #define VARCHARARRAYOID 1015
 #define INTEGERARRAYOID 1007
+#define TIMESTAMPARRAYOID 1115
+#define TIMESTAMPTZARRAYOID 1185
+
 
 static int lpq_type_mt_ = 0;
 #define LPQ_TYPE_MT ((void *) &lpq_type_mt_)
@@ -112,17 +119,31 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
     case OIDOID:
       lua_pushinteger(L, (int) lpq_getuint32(value));
       break;
+    case INT8OID:
+      lua_pushinteger(L, (int64) lpq_getint64(value));
+      break;
     case FLOAT4OID:
       lua_pushnumber(L, (lua_Number) lpq_getfloat4(value));
       break;
     case FLOAT8OID:
       lua_pushnumber(L, (lua_Number) lpq_getfloat8(value));
       break;
+    case TIMESTAMPOID:
+    case TIMESTAMPTZOID: {
+      // I'm re-reading the value as casting the *value did not work correctly
+      char *typeflag = "%timestamptz";
+      if (type == TIMESTAMPOID)typeflag = "%timestamp";
+      PGtimestamp tvalue;
+      PQgetf(result, rowindex, typeflag, field_number, &tvalue);
+      lua_pushnumber(L, tvalue.epoch);
+      break;
+    }
     case BYTEAOID:
     case TEXTOID:
     case VARCHAROID:
       lua_pushlstring(L, value, length);
       break;
+  // FIXME: The blocks below are all so similar, that they can be abstracted further
   case INTEGERARRAYOID: {
       PGarray arr;
       int i = 0;
@@ -131,10 +152,10 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
       lua_newtable(L);
       for(i=0; i < ntups; i++) {
         // We get the value for each row in the dictionary
-        PGint4 value;
-        PQgetf(arr.res, i, "%int4", 0, &value);
+        PGint4 val;
+        PQgetf(arr.res, i, "%int4", 0, &val);
         lua_pushnumber(L, i + 1); //index
-        lua_pushnumber(L, value); //value
+        lua_pushnumber(L, val); //value
         lua_settable(L, -3);
       }
     break;
@@ -146,18 +167,52 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
       lua_newtable(L);
       for(i=0; i < ntups; i++) {
         // We get the value for each row in the dictionary
-        PGvarchar value;
-        PQgetf(arr.res, i, "%varchar", 0, &value);
+        PGvarchar val;
+        PQgetf(arr.res, i, "%varchar", 0, &val);
         lua_pushnumber(L, i + 1); //index
         // I'm not sure if strlen is correct usage here, but I couldn't
         // figure out if there is an official function for determining
         // PGvarchar's length. Besides, strlen seems to work fine.
-        lua_pushlstring(L, value, strlen(value));
+        lua_pushlstring(L, val, strlen(val));
         lua_settable(L, -3);
       }
       break;
     }
-    case BPCHAROID: {
+  case TIMESTAMPARRAYOID: {
+    PGarray arr;
+    int i = 0;
+    PQgetf(result, rowindex, "%timestamp[]", field_number, &arr);
+    int ntups = PQntuples(arr.res);
+    lua_newtable(L);
+    for(i=0; i < ntups; i++) {
+      // We get the val for each row in the dictionary
+      PGtimestamp val;
+      PQgetf(arr.res, i, "%timestamp", 0, &val);
+      lua_pushnumber(L, i + 1); //index
+      // we're pushing the time converted to time stamp, lua doesn't support much more anyway
+      lua_pushnumber(L, val.epoch);
+      lua_settable(L, -3);
+    }
+    break;
+  }
+  case TIMESTAMPTZARRAYOID : {
+    PGarray arr;
+    int i = 0;
+    PQgetf(result, rowindex, "%timestamptz[]", field_number, &arr);
+    int ntups = PQntuples(arr.res);
+    lua_newtable(L);
+    for(i=0; i < ntups; i++) {
+      // We get the value for each row in the dictionary
+      PGtimestamp val;
+      PQgetf(arr.res, i, "%timestamptz", 0, &val);
+      lua_pushnumber(L, i + 1); //index
+      // we're pushing the time converted to time stamp, lua doesn't support much more anyway
+      lua_pushnumber(L, val.epoch);
+      lua_settable(L, -3);
+    }
+    break;
+  }
+  case BPCHAROID: {
       int l = mod - VARHDRSZ;
       if (l < 0) l = length;
       lua_pushlstring(L, value, l);
