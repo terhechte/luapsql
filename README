@@ -11,6 +11,10 @@ I've added *read* support for the following additional datatypes:
 * Timestamp[] (with or without timezone) converted to int (timezones are converted into the local machine's timezone) 
 * Timestamp/tz
 * BigInt
+* BigInt[]
+* JSON
+* Real[]
+* Double Precision[]
 
 The data for these fields is being returned as a Lua table.
 
@@ -31,14 +35,8 @@ http://libpqtypes.esilo.com/
 The code could need a bit of a refactoring since there're
 currently many code duplications.
 
-Additional Documentation on array types can be found here:
-(this is especially useful if you're interested in adding support
-for writing / updating such values)
-- http://libpqtypes.esilo.com/man3/pqt-specs.html
-- http://libpqtypes.esilo.com/man3/PQgetf.html
-- http://libpqtypes.esilo.com/man3/PQputf.html
-- http://pgl.yoyo.org/luai/i/lua_pushnumber
-
+At the bottom of this document is a short introduction into hacking
+for people interested in adding more types support to this project.
 
 LuaPSQL
 =======
@@ -62,7 +60,7 @@ command.
 
 Here's a simple example:
 
-``` lua
+``` Lua
     local psql = require "psql"
 
     -- check result set
@@ -106,7 +104,7 @@ Registered types
 
 It is possible to register specific types in LuaPSQL using:
 
-``` lua
+``` Lua
     metatable = psql.register(oid [, metatable])
 ```
 
@@ -118,7 +116,7 @@ The metatable for your registered type should contain two fields, `__send` and
 `__recv` that specify how values are translated from Lua to PostgreSQL and
 vice-versa, respectively:
 
-``` lua
+``` Lua
     bytea_str = objmt.__send(obj)
     obj = objmt.__recv(bytea_str, fmod)
 ```
@@ -137,3 +135,116 @@ in it.
 You may need to install libpqtypes by hand. It can be found here:
 http://libpqtypes.esilo.com/
 
+
+Extending:
+=========
+
+Is your favorite array type missing? Or another type for that matter?
+
+As explained above, some types can easily be implemented via metatables,
+though this doesn't work for array types.
+
+Additional Documentation on postgresql types / array types can be found here:
+(this is especially useful if you're interested in adding support
+for writing / updating such values)
+- http://libpqtypes.esilo.com/man3/pqt-specs.html
+- http://libpqtypes.esilo.com/man3/PQgetf.html
+- http://libpqtypes.esilo.com/man3/PQputf.html
+
+Some info on what to feed into lua afterwards:
+- http://pgl.yoyo.org/luai/i/lua_pushnumber
+
+If you want to add support for reading a new type, go into psql.c
+and have a look at 'lpq_pushvalue'. This function has a rather
+long switch statement (which really needs to be refactored).
+In that statement, we're performing a comparison for all the
+different PostgreSQL datatypes. If the correct one is found,
+we're getting the data from the Postgres query result, converting
+it to Lua data objects, and pushing it onto the Lua stack.
+
+Simple Example (convert string):
+
+``` C
+#define VARCHAROID 1043
+...
+    case VARCHAROID:
+      lua_pushlstring(L, value, length);
+      break;
+```
+
+The value of the type (1043 in this case) can be retrieved
+from doing a quick query in psql: "select 'varchar'::regtype::oid;".
+
+If you want to add support for a new datatype, just research the
+datatype, and build conversion utilities for the type in question,
+so it can be handed of to Lua. If you happen to stumble upon a more
+difficult type, also have a look at the libpqtypes specs (http://libpqtypes.esilo.com/man3/pqt-specs.html)
+as it has a wealth of documentation on this matter. The implementation of
+TIMESTAMPOID serves as an example of this.
+
+Finally, adding support for array operators is a bit more tricky.
+The gist is that you're retrieving a second query result from the
+first query result. The second query result is just a list of items of
+the specified array datatype:
+
+``` C
+case VARCHARARRAYOID: {
+      PGarray arr;
+      int i = 0;
+
+      // Get a new result from the result into a PGArray Struct
+      PQgetf(result, rowindex, "%varchar[]", field_number, &arr);
+
+      // Count the number of 'rows'
+      int ntups = PQntuples(arr.res);
+
+      // Create a new Lua Table and push it onto the stack
+      lua_newtable(L);
+
+      // Iterate over the rows
+      for(i=0; i < ntups; i++) {
+        // Retrieve a Varchar Value from each row
+        PGvarchar val;
+        PQgetf(arr.res, i, "%varchar", 0, &val); // we always take field 0
+
+        // Add an index to the table
+        lua_pushnumber(L, i + 1);
+
+        // Add the string to the table
+        lua_pushlstring(L, val, strlen(val));
+
+        // Set the table
+        lua_settable(L, -3);
+      }
+      break;
+    }
+```
+
+If you want to add support for writing new data types, again,
+have a look at http://libpqtypes.esilo.com/man3/pqt-specs.html as it contains
+a plethora of information on this matter.
+
+In that case you want to add functions to lpq_tovalue in psql.c
+
+If you quickly want to setup a test table with various array types,
+here's some SQL:
+
+``` SQL
+-- Creating
+CREATE TABLE lala
+(
+  intarray integer[],
+  stringarray character varying[],
+  floatarray real[],
+  bigintarray bigint[],
+  jsonfield json,
+  jsonarray json[]
+)
+```
+
+``` SQL
+-- Inserting
+INSERT INTO test_table(
+            intarray, stringarray, floatarray, bigintarray, jsonfield, jsonarray)
+    VALUES (ARRAY[1, 2, 3], ARRAY['kalr', 'jochen'], ARRAY[1.1, 1.7], ARRAY[10000, 480248], '{"a":1}'::json, ARRAY['{"b":2}'::json, '[1, 3, 7]'::json]);
+```

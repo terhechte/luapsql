@@ -85,11 +85,15 @@ static int lpq_typeerror (lua_State *L, int narg, const char *tname) {
 #define VARCHAROID 1043
 #define TIMESTAMPOID 1114
 #define TIMESTAMPTZOID 1184
+#define JSONOID 114
 // array oid types
 #define VARCHARARRAYOID 1015
 #define INTEGERARRAYOID 1007
+#define BIGINTEGERARRAYOID 1016
 #define TIMESTAMPARRAYOID 1115
 #define TIMESTAMPTZARRAYOID 1185
+#define FLOAT4ARRAYOID 1021
+#define FLOAT8ARRAYOID 1022
 
 
 static int lpq_type_mt_ = 0;
@@ -108,6 +112,8 @@ static int lpq_gettypemt (lua_State *L, Oid type) {
 
 static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
                            int length, PGresult *result, int field_number, int rowindex) {
+
+  // FIXME: Some of the blocks below are all so similar, that they can be abstracted further
   switch (type) {
     case BOOLOID:
       lua_pushboolean(L, *value);
@@ -141,9 +147,9 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
     case BYTEAOID:
     case TEXTOID:
     case VARCHAROID:
+    case JSONOID:
       lua_pushlstring(L, value, length);
       break;
-  // FIXME: The blocks below are all so similar, that they can be abstracted further
   case INTEGERARRAYOID: {
       PGarray arr;
       int i = 0;
@@ -159,7 +165,24 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
         lua_settable(L, -3);
       }
     break;
-  } case VARCHARARRAYOID: {
+  }
+  case BIGINTEGERARRAYOID: {
+      PGarray arr;
+      int i = 0;
+      PQgetf(result, rowindex, "%int8[]", field_number, &arr);
+      int ntups = PQntuples(arr.res);
+      lua_newtable(L);
+      for(i=0; i < ntups; i++) {
+        // We get the value for each row in the dictionary
+        PGint8 val;
+        PQgetf(arr.res, i, "%int8", 0, &val);
+        lua_pushnumber(L, i + 1); //index
+        lua_pushnumber(L, val); //value
+        lua_settable(L, -3);
+      }
+    break;
+  }
+  case VARCHARARRAYOID: {
       PGarray arr;
       int i = 0;
       PQgetf(result, rowindex, "%varchar[]", field_number, &arr);
@@ -195,7 +218,7 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
     }
     break;
   }
-  case TIMESTAMPTZARRAYOID : {
+  case TIMESTAMPTZARRAYOID: {
     PGarray arr;
     int i = 0;
     PQgetf(result, rowindex, "%timestamptz[]", field_number, &arr);
@@ -208,6 +231,40 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
       lua_pushnumber(L, i + 1); //index
       // we're pushing the time converted to time stamp, lua doesn't support much more anyway
       lua_pushnumber(L, val.epoch);
+      lua_settable(L, -3);
+    }
+    break;
+  }
+  case FLOAT8ARRAYOID:
+  case FLOAT4ARRAYOID: {
+    int byteSize = 4;
+    if (type == FLOAT8ARRAYOID) {
+      byteSize = 8;
+    }
+    char template1[8];
+    sprintf(template1, "%%float%i", byteSize);
+    char template2[10];
+    sprintf(template2, "%s[]", template1);
+
+    PGarray arr;
+    int i = 0;
+    PQgetf(result, rowindex, template2, field_number, &arr);
+    int ntups = PQntuples(arr.res);
+    lua_newtable(L);
+    for(i=0; i < ntups; i++) {
+      // We get the val for each row in the dictionary
+      lua_pushnumber(L, i + 1); //index
+      // we're pushing the time converted to time stamp, lua doesn't support much more anyway
+      if (byteSize == 4) {
+        PGfloat4 val;
+        PQgetf(arr.res, i, template1, 0, &val);
+        lua_pushnumber(L, (lua_Number)val);
+      }
+      if (byteSize == 8) {
+        PGfloat8 val;
+        PQgetf(arr.res, i, template1, 0, &val);
+        lua_pushnumber(L, (lua_Number)val);
+      }
       lua_settable(L, -3);
     }
     break;
