@@ -1,10 +1,15 @@
 FORK
 =======
 This is a small fork of LuaPSQL to add some small additional features.
+I also moved it from Google Code to Github. The original author is Luis Carvalho.
+It can be found here:
+https://code.google.com/p/luapsql/
+
 Most notably support for array datatypes. These are currently not supported
 in any of the other Postgresql drivers for lua.
 
 I've added *read* support for the following additional datatypes:
+
 * Integer[]
 * Character Varying[]
 * Character[]
@@ -147,11 +152,13 @@ though this doesn't work for array types.
 Additional Documentation on postgresql types / array types can be found here:
 (this is especially useful if you're interested in adding support
 for writing / updating such values)
+
 - http://libpqtypes.esilo.com/man3/pqt-specs.html
 - http://libpqtypes.esilo.com/man3/PQgetf.html
 - http://libpqtypes.esilo.com/man3/PQputf.html
 
 Some info on what to feed into lua afterwards:
+
 - http://pgl.yoyo.org/luai/i/lua_pushnumber
 
 If you want to add support for reading a new type, go into psql.c
@@ -164,7 +171,7 @@ it to Lua data objects, and pushing it onto the Lua stack.
 
 Simple Example (convert string):
 
-``` C
+``` c
 #define VARCHAROID 1043
 ...
     case VARCHAROID:
