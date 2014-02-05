@@ -7,7 +7,7 @@ LUAINC = -I/usr/local/Cellar/lua/5.1.5/include/
 LUALIB = -L/usr/local/Cellar/lua/5.1.5/lib/ -llua
 
 #PGINC = -I/usr/include/postgresql
-#PGLIB = -lpq
+#PGLIB = -lpq -lpqtypes
 #LUAINC = -I/usr/include/lua5.1
 
 # Lua for Windows / PostgreSQL installer
