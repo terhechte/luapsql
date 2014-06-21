@@ -1,0 +1,89 @@
+LuaPSQL
+=======
+
+This is LuaPSQL, a binding of PostgreSQL's client library, libpq, for Lua.
+This module is specific to PostgreSQL and offers more functionality when
+compared to the generic LuaSQL bindings:
+
+  * Binary types as equivalent as possible to Lua types (moreover, check
+    "registered types" below)
+  * Asynchronous connections and query executions
+  * Parametrizable statements
+  * Prepared statements
+
+The routines are, however, *low*-level methods, most of them simply wrapping
+their C counterparts. For this reason, a more detailed documentation is not
+included and the user can refer to PostgreSQL's documentation on libpq for
+details -- check the chapter entitled "libpq - C library". This binding is
+fairly complete, with the sole exception of function associated with the COPY
+command.
+
+Here's a simple example:
+
+    local psql = require "psql"
+
+    -- check result set
+    local function checkset (conn, rset)
+      local status = rset:status()
+      assert(status == "PGRES_COMMAND_OK" or status == "PGRES_TUPLES_OK",
+        conn:error())
+      return rset
+    end
+
+    -- connect
+    local conn = psql.connect "dbname=test"
+    assert(conn:status(), conn:error())
+
+    -- create and populate table
+    checkset(conn, conn:exec"CREATE TABLE x (i int, f double precision)")
+    local plan = assert(conn:prepare("INSERT INTO x VALUES ($1, $2)"))
+    for i = 1, 10 do
+      checkset(conn, plan:exec(i, math.sin(math.pi / i)))
+    end
+
+    -- list table
+    local rset = checkset(conn, conn:exec"SELECT * FROM x")
+    local f = rset:fields()
+    for i, t in rset:rows() do
+      for k in pairs(f) do
+        print(i, k, t[k])
+      end
+    end
+
+    -- wrap up
+    checkset(conn, conn:exec"DROP TABLE x")
+    conn:finish()
+
+More usage examples can be found in the "test" and "etc" folders.
+
+
+Registered types
+----------------
+
+It is possible to register specific types in LuaPSQL using:
+
+    metatable = psql.register(oid [, metatable])
+
+If `metatable` is not provided a new table will be created. psql.register sets
+field `__oid` to the provided `oid` parameter (to get the oid of a certain
+type, issue "select 'typename'::regtype::oid" in psql.)
+
+The metatable for your registered type should contain two fields, `__send` and
+`__recv` that specify how values are translated from Lua to PostgreSQL and
+vice-versa, respectively:
+
+    bytea_str = objmt.__send(obj)
+    obj = objmt.__recv(bytea_str, fmod)
+
+For examples, check `pqtype.c`.
+
+
+Installation
+------------
+
+The installation should be straightforward as LuaPSQL uses Luarocks. However,
+if you want to run the tests in the `test` folder you will also need
+`pqtype.so`; to compile it, modify the rockspec file according to the comments
+in it.
+
+
