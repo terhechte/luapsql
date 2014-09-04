@@ -84,9 +84,10 @@ static int lpq_typeerror (lua_State *L, int narg, const char *tname) {
 #define FLOAT8OID  701
 #define BPCHAROID  1042
 #define VARCHAROID 1043
-#define INTERVALOID 1184
 #define REGCLASSOID 2205
 #define TIMESTAMPOID 1114
+// oops these are the same
+#define INTERVALOID 1184
 #define TIMESTAMPTZOID 1184
 #define JSONOID 114
 // array oid types
@@ -118,16 +119,6 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
 
   // FIXME: Some of the blocks below are all so similar, that they can be abstracted further
   switch (type) {
-    case INTERVALOID:
-      /* assert(length == 0x10); */
-      lua_createtable(L, 0, 3);
-      lua_pushnumber(L, (lua_Number) lpq_getfloat8(value));
-      lua_setfield(L, -2, "time");
-      lua_pushinteger(L, (lua_Integer) lpq_getuint32(value+8));
-      lua_setfield(L, -2, "day");
-      lua_pushinteger(L, (lua_Integer) lpq_getuint32(value+0xc));
-      lua_setfield(L, -2, "month");
-      break;
     case BOOLOID:
       lua_pushboolean(L, *value);
       break;
