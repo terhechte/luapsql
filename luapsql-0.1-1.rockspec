@@ -21,7 +21,8 @@ dependencies = {
 }
 
 external_dependencies = {
-  LIBPQ = { header = "libpq-fe.h" }
+  LIBPQ = { header = "libpq-fe.h" },
+
 }
 
 build = {
@@ -32,7 +33,7 @@ build = {
       cflags = {"-g"},
       incdirs = {"$(LIBPQ_INCDIR)"},
       libdirs = {"$(LIBPQ_LIBDIR)"},
-      libraries = {"pq"},
+      libraries = {"pq","pqtypes"},
     },
     -- Uncomment below to run test/test.lua
     --pqtype = {"pqtype.c", "lpqtype.c"}
