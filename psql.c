@@ -75,6 +75,7 @@ static int lpq_typeerror (lua_State *L, int narg, const char *tname) {
 #define BOOLOID    16
 #define BYTEAOID   17
 #define CHAROID    18
+#define NAMEOID    19
 #define INT8OID    20
 #define INT4OID    23
 #define TEXTOID    25 /* ignore encoding for now */
@@ -83,7 +84,10 @@ static int lpq_typeerror (lua_State *L, int narg, const char *tname) {
 #define FLOAT8OID  701
 #define BPCHAROID  1042
 #define VARCHAROID 1043
+#define REGCLASSOID 2205
 #define TIMESTAMPOID 1114
+// oops these are the same
+#define INTERVALOID 1184
 #define TIMESTAMPTZOID 1184
 #define JSONOID 114
 // array oid types
@@ -122,6 +126,7 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
       lua_pushlstring(L, value, 1);
       break;
     case INT4OID:
+    case REGCLASSOID:
     case OIDOID:
       lua_pushinteger(L, (int) lpq_getuint32(value));
       break;
@@ -148,6 +153,7 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
     case TEXTOID:
     case VARCHAROID:
     case JSONOID:
+    case NAMEOID:
       lua_pushlstring(L, value, length);
       break;
   case INTEGERARRAYOID: {
@@ -309,6 +315,15 @@ static void lpq_pushvalue (lua_State *L, Oid type, int mod, const char *value,
 
 static int lpq_tovalue (lua_State *L, int narg, Oid type, luaL_Buffer *b) {
   switch (type) {
+    case INTERVALOID:
+      lua_getfield(L, narg, "time");
+      /* XXX: if timestamps are int64... or float8... */
+      lpq_sendfloat8(b, (float8) lua_tonumber(L, -1));
+      lua_getfield(L, narg, "day");
+      lpq_senduint32(b, (uint32) lua_tonumber(L, -1));
+      lua_getfield(L, narg, "month");
+      lpq_senduint32(b, (uint32) lua_tonumber(L, -1));
+      return 0x10;
     case BOOLOID:
       luaL_addchar(b, (char) lua_toboolean(L, narg));
       return sizeof(char);
@@ -328,6 +343,7 @@ static int lpq_tovalue (lua_State *L, int narg, Oid type, luaL_Buffer *b) {
     case BYTEAOID:
     case TEXTOID:
     case BPCHAROID:
+    case NAMEOID:
     case VARCHAROID: {
       size_t l;
       const char *s = lua_tolstring(L, narg, &l);
